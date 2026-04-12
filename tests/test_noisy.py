@@ -101,3 +101,43 @@ class TestProxy:
         config = _load_config()
         crawler = Crawler(config)
         assert not crawler._session.proxies
+
+
+class TestRandomization:
+    def test_draw_scalar_returns_value(self):
+        config = _load_config()
+        crawler = Crawler(config)
+        # When config has a scalar, _draw returns it as-is
+        crawler._config["search_chance"] = 0.3
+        assert crawler._draw("search_chance", 0.5) == 0.3
+
+    def test_draw_range_returns_within_bounds(self):
+        config = _load_config()
+        crawler = Crawler(config)
+        crawler._config["search_chance"] = [0.1, 0.9]
+        for _ in range(100):
+            val = crawler._draw("search_chance", 0.5)
+            assert 0.1 <= val <= 0.9
+
+    def test_draw_missing_key_returns_default(self):
+        config = _load_config()
+        crawler = Crawler(config)
+        assert crawler._draw("nonexistent_key", 42) == 42
+
+    def test_randomize_session_varies_values(self):
+        config = _load_config()
+        config["search_chance"] = [0.1, 0.9]
+        config["max_depth"] = [3, 30]
+        config["min_sleep"] = [0.5, 2.0]
+        config["max_sleep"] = [3, 8]
+        config["read_pause_chance"] = [0.05, 0.25]
+        config["read_pause_multiplier"] = [2, 6]
+        config["context_switch_chance"] = [0.05, 0.2]
+        config["session_break_chance"] = [0.05, 0.15]
+        crawler = Crawler(config)
+        values = set()
+        for _ in range(20):
+            crawler._randomize_session()
+            values.add(round(crawler._search_chance, 4))
+        # With 20 draws from [0.1, 0.9], we should see more than 1 unique value
+        assert len(values) > 1

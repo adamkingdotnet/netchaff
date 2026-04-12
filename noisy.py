@@ -60,6 +60,26 @@ class Crawler:
         if proxy:
             self._session.proxies = {"http": proxy, "https": proxy}
 
+    def _draw(self, key, default):
+        """Return a value for key from config. If the config value is a
+        two-element list, draw uniformly from [min, max]. If it's a scalar,
+        return it as-is. If missing, return the default."""
+        value = self._config.get(key, default)
+        if isinstance(value, list) and len(value) == 2:
+            return random.uniform(value[0], value[1])
+        return value
+
+    def _randomize_session(self):
+        """Draw fresh behavioral parameters for this crawl session."""
+        self._search_chance = self._draw("search_chance", 0.3)
+        self._max_depth = int(self._draw("max_depth", 15))
+        self._min_sleep = self._draw("min_sleep", 1)
+        self._max_sleep = self._draw("max_sleep", 5)
+        self._read_pause_chance = self._draw("read_pause_chance", 0.15)
+        self._read_pause_multiplier = self._draw("read_pause_multiplier", 4)
+        self._context_switch_chance = self._draw("context_switch_chance", 0.1)
+        self._session_break_chance = self._draw("session_break_chance", 0.1)
+
     class CrawlerTimedOut(Exception):
         pass
 
