@@ -1,0 +1,27 @@
+name: CI
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+    branches: [master]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.14"
+          allow-prereleases: true
+
+      - name: Install dependencies
+        run: pip install requests pytest
+
+      - name: Run tests
+        run: python -m pytest tests/ -v
+
+      - name: Smoke test (15s live run)
+        run: python noisy.py --config config.json --timeout 15 --log warning
