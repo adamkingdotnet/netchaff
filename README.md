@@ -88,6 +88,26 @@ Add templates to `search.templates` using `{placeholder}` syntax, and populate t
 
 This generates queries like "best mattress for travel", "how to change oil", "pad thai recipe", etc.
 
+### Proxy support
+
+Route all traffic through an HTTP or SOCKS proxy:
+
+```bash
+# HTTP proxy
+python noisy.py --config config.json --proxy http://127.0.0.1:8080
+
+# SOCKS5 proxy (requires: pip install requests[socks])
+python noisy.py --config config.json --proxy socks5://127.0.0.1:1080
+```
+
+Or set it in `config.json`:
+
+```json
+{
+  "proxy": "http://127.0.0.1:8080"
+}
+```
+
 ## Authors
 
 * **Itay Hury** -- *Original project* -- [1tayH](https://github.com/1tayH)

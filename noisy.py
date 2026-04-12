@@ -56,6 +56,9 @@ class Crawler:
         self._search_chance = config.get("search_chance", 0.3)
         self._search_config = config.get("search", {})
         self._dry_run = config.get("dry_run", False)
+        proxy = config.get("proxy")
+        if proxy:
+            self._session.proxies = {"http": proxy, "https": proxy}
 
     class CrawlerTimedOut(Exception):
         pass
@@ -312,6 +315,12 @@ def main():
         default=False,
         help="log URLs without making requests",
     )
+    parser.add_argument(
+        "--proxy",
+        type=str,
+        default=None,
+        help="proxy URL (e.g., http://host:port or socks5://host:port)",
+    )
     args = parser.parse_args()
 
     logging.basicConfig(level=getattr(logging, args.log.upper()))
@@ -324,6 +333,9 @@ def main():
 
     if args.dry_run:
         config["dry_run"] = True
+
+    if args.proxy:
+        config["proxy"] = args.proxy
 
     crawler = Crawler(config)
     crawler.crawl()

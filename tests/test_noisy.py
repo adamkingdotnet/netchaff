@@ -87,3 +87,17 @@ class TestDryRun:
         with patch.object(crawler._session, "get") as mock_get:
             crawler.crawl()
             mock_get.assert_not_called()
+
+
+class TestProxy:
+    def test_proxy_config_sets_session_proxies(self):
+        config = _load_config()
+        config["proxy"] = "http://127.0.0.1:8080"
+        crawler = Crawler(config)
+        assert crawler._session.proxies["http"] == "http://127.0.0.1:8080"
+        assert crawler._session.proxies["https"] == "http://127.0.0.1:8080"
+
+    def test_no_proxy_config_no_proxies(self):
+        config = _load_config()
+        crawler = Crawler(config)
+        assert not crawler._session.proxies
