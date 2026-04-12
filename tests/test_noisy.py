@@ -141,3 +141,56 @@ class TestRandomization:
             values.add(round(crawler._search_chance, 4))
         # With 20 draws from [0.1, 0.9], we should see more than 1 unique value
         assert len(values) > 1
+
+
+class TestTrackerHarvesting:
+    def test_extract_tracker_urls_finds_matching_domains(self):
+        config = _load_config()
+        config["tracker_domains"] = ["tracker.example.com", "ads.example.com"]
+        crawler = Crawler(config)
+        html = b'''<html>
+        <script src="https://tracker.example.com/t.js"></script>
+        <img src="https://ads.example.com/pixel.gif">
+        <img src="https://safe.example.com/logo.png">
+        <iframe src="https://tracker.example.com/frame"></iframe>
+        </html>'''
+        urls = crawler._extract_tracker_urls(html, "https://example.com")
+        assert len(urls) == 3
+        assert all("tracker.example.com" in u or "ads.example.com" in u for u in urls)
+
+    def test_extract_tracker_urls_returns_empty_for_no_trackers(self):
+        config = _load_config()
+        config["tracker_domains"] = ["tracker.example.com"]
+        crawler = Crawler(config)
+        html = b'<html><img src="https://safe.example.com/logo.png"></html>'
+        urls = crawler._extract_tracker_urls(html, "https://example.com")
+        assert urls == []
+
+    def test_extract_tracker_urls_skipped_when_no_domains(self):
+        config = _load_config()
+        config.pop("tracker_domains", None)
+        crawler = Crawler(config)
+        assert crawler._tracker_domains == []
+
+    def test_visit_trackers_calls_request(self):
+        config = _load_config()
+        config["tracker_domains"] = ["tracker.example.com"]
+        config["dry_run"] = True
+        crawler = Crawler(config)
+        tracker_urls = [
+            "https://tracker.example.com/a",
+            "https://tracker.example.com/b",
+            "https://tracker.example.com/c",
+            "https://tracker.example.com/d",
+            "https://tracker.example.com/e",
+        ]
+        with patch.object(crawler, "_request") as mock_req:
+            crawler._visit_trackers(tracker_urls)
+            assert 1 <= mock_req.call_count <= 3
+
+    def test_visit_trackers_noop_with_empty_list(self):
+        config = _load_config()
+        crawler = Crawler(config)
+        with patch.object(crawler, "_request") as mock_req:
+            crawler._visit_trackers([])
+            mock_req.assert_not_called()

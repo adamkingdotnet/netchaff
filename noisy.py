@@ -26,6 +26,11 @@ _HREF_RE = re.compile(r"""href=["'](?!#)(.*?)["']""")
 
 _TEMPLATE_RE = re.compile(r"\{(\w+)\}")
 
+_TRACKER_RE = re.compile(
+    r"""<(?:script|img|iframe)\s[^>]*?src=["'](https?://[^"']+)["']""",
+    re.IGNORECASE,
+)
+
 
 def generate_query(search_config):
     """Build a search query by picking a random template and filling its
@@ -58,6 +63,7 @@ class Crawler:
         proxy = config.get("proxy")
         if proxy:
             self._session.proxies = {"http": proxy, "https": proxy}
+        self._tracker_domains = config.get("tracker_domains", [])
 
     def _draw(self, key, default):
         """Return a value for key from config. If the config value is a
@@ -136,6 +142,30 @@ class Crawler:
         filtered = [u for u in normalized if self._should_accept_url(u)]
         random.shuffle(filtered)
         return filtered[:MAX_LINKS]
+
+    def _extract_tracker_urls(self, body, root_url):
+        """Extract URLs from script/img/iframe src attributes that match
+        known tracking domains."""
+        text = body.decode("utf-8", errors="replace")
+        urls = _TRACKER_RE.findall(text)
+        normalized = [self._normalize_link(u, root_url) for u in urls]
+        return [
+            u for u in normalized
+            if u and any(domain in u for domain in self._tracker_domains)
+        ]
+
+    def _visit_trackers(self, tracker_urls):
+        """Hit 1-3 tracker URLs to accumulate cookies. Failures are silently
+        ignored since trackers often reject non-browser clients."""
+        if not tracker_urls:
+            return
+        count = min(random.randint(1, 3), len(tracker_urls))
+        for url in random.sample(tracker_urls, count):
+            try:
+                logging.debug("Tracker: %s", url)
+                self._request(url)
+            except requests.exceptions.RequestException:
+                pass
 
     def _blacklist(self, url):
         if len(self._blacklisted) < MAX_BLACKLIST:
