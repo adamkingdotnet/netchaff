@@ -220,6 +220,9 @@ class Crawler:
                     continue
 
                 new_links = self._extract_urls(body, link)
+                if self._tracker_domains:
+                    tracker_urls = self._extract_tracker_urls(body, link)
+                    self._visit_trackers(tracker_urls)
                 del body  # free immediately
 
                 self._human_sleep()
@@ -257,6 +260,9 @@ class Crawler:
                 return
 
             links = self._extract_urls(body, url)
+            if self._tracker_domains:
+                tracker_urls = self._extract_tracker_urls(body, url)
+                self._visit_trackers(tracker_urls)
             del body
 
             self._human_sleep()
@@ -271,6 +277,10 @@ class Crawler:
                     result_body = self._request(result_link)
                     if result_body is None:
                         continue
+
+                    if self._tracker_domains:
+                        result_tracker_urls = self._extract_tracker_urls(result_body, result_link)
+                        self._visit_trackers(result_tracker_urls)
 
                     # sometimes follow one link deeper from the result
                     if random.random() < 0.4:
