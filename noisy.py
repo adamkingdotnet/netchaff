@@ -53,7 +53,6 @@ class Crawler:
         self._blacklisted = set(config.get("blacklisted_urls", []))
         self._session = requests.Session()
         self._start_time = None
-        self._search_chance = config.get("search_chance", 0.3)
         self._search_config = config.get("search", {})
         self._dry_run = config.get("dry_run", False)
         proxy = config.get("proxy")
@@ -149,23 +148,21 @@ class Crawler:
         end_time = self._start_time + datetime.timedelta(seconds=timeout)
         return datetime.datetime.now() >= end_time
 
-    def _human_sleep(self, min_sleep, max_sleep):
+    def _human_sleep(self):
         """Sleep with a distribution that mimics human browsing - mostly short
         pauses (scanning/clicking) with occasional longer ones (reading)."""
         if self._dry_run:
             return
-        if random.random() < 0.15:
-            # 15% chance of a longer "reading" pause
-            time.sleep(random.uniform(max_sleep, max_sleep * 4))
+        if random.random() < self._read_pause_chance:
+            time.sleep(random.uniform(self._max_sleep, self._max_sleep * self._read_pause_multiplier))
         else:
-            # quick click-through
-            time.sleep(random.uniform(min_sleep, max_sleep))
+            time.sleep(random.uniform(self._min_sleep, self._max_sleep))
 
     def _browse_from_links(self, links):
         # vary depth per session - sometimes shallow, sometimes deep
         max_depth = random.randint(
-            max(1, self._config["max_depth"] // 3),
-            self._config["max_depth"],
+            max(1, self._max_depth // 3),
+            self._max_depth,
         )
 
         for depth in range(max_depth):
@@ -178,7 +175,7 @@ class Crawler:
 
             # occasionally jump to a completely unrelated root mid-crawl
             # this mimics opening a new tab / switching context
-            if depth > 0 and random.random() < 0.1:
+            if depth > 0 and random.random() < self._context_switch_chance:
                 logging.debug("Context switch at depth %d", depth)
                 return
 
@@ -195,10 +192,7 @@ class Crawler:
                 new_links = self._extract_urls(body, link)
                 del body  # free immediately
 
-                self._human_sleep(
-                    self._config["min_sleep"],
-                    self._config["max_sleep"],
-                )
+                self._human_sleep()
 
                 if len(new_links) > 1:
                     links = new_links
@@ -235,10 +229,7 @@ class Crawler:
             links = self._extract_urls(body, url)
             del body
 
-            self._human_sleep(
-                self._config["min_sleep"],
-                self._config["max_sleep"],
-            )
+            self._human_sleep()
 
             # click 1-3 search results, like a real user would
             clicks = min(random.randint(1, 3), len(links))
@@ -262,10 +253,7 @@ class Crawler:
                     else:
                         del result_body
 
-                    self._human_sleep(
-                        self._config["min_sleep"],
-                        self._config["max_sleep"],
-                    )
+                    self._human_sleep()
 
                 except requests.exceptions.RequestException:
                     logging.debug("Search result failed: %s", result_link)
@@ -280,6 +268,8 @@ class Crawler:
             if self._is_timeout_reached():
                 logging.info("Timeout reached, exiting")
                 return
+
+            self._randomize_session()
 
             try:
                 if random.random() < self._search_chance:
@@ -297,7 +287,7 @@ class Crawler:
 
                 # inter-session pause: sometimes a brief gap, sometimes
                 # a longer break like someone stepped away
-                if random.random() < 0.1 and not self._dry_run:
+                if random.random() < self._session_break_chance and not self._dry_run:
                     pause = random.uniform(30, 120)
                     logging.debug("Taking a %.0fs break", pause)
                     time.sleep(pause)
