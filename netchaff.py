@@ -1,3 +1,5 @@
+__version__ = "0.1.0"
+
 import argparse
 import datetime
 import json
@@ -345,6 +347,7 @@ class Crawler:
 
 def main():
     parser = argparse.ArgumentParser()
+    parser.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
     parser.add_argument(
         "--log", metavar="-l", type=str, default="info", help="logging level"
     )
