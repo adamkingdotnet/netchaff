@@ -1,5 +1,6 @@
 import json
 import pathlib
+from unittest.mock import patch
 
 from noisy import Crawler, generate_query, _TEMPLATE_RE
 
@@ -73,3 +74,16 @@ class TestCrawler:
         body = f"<html><body>{links}</body></html>".encode()
         urls = crawler._extract_urls(body, "https://example.com")
         assert len(urls) <= 200
+
+
+class TestDryRun:
+    def test_dry_run_logs_without_requests(self):
+        config = _load_config()
+        config["timeout"] = 5
+        config["dry_run"] = True
+        config["min_sleep"] = 0
+        config["max_sleep"] = 0
+        crawler = Crawler(config)
+        with patch.object(crawler._session, "get") as mock_get:
+            crawler.crawl()
+            mock_get.assert_not_called()

@@ -55,11 +55,15 @@ class Crawler:
         self._start_time = None
         self._search_chance = config.get("search_chance", 0.3)
         self._search_config = config.get("search", {})
+        self._dry_run = config.get("dry_run", False)
 
     class CrawlerTimedOut(Exception):
         pass
 
     def _request(self, url):
+        if self._dry_run:
+            logging.info("[dry-run] Would request: %s", url)
+            return None
         random_user_agent = random.choice(self._config["user_agents"])
         self._session.headers["user-agent"] = random_user_agent
 
@@ -122,10 +126,11 @@ class Crawler:
         end_time = self._start_time + datetime.timedelta(seconds=timeout)
         return datetime.datetime.now() >= end_time
 
-    @staticmethod
-    def _human_sleep(min_sleep, max_sleep):
+    def _human_sleep(self, min_sleep, max_sleep):
         """Sleep with a distribution that mimics human browsing - mostly short
         pauses (scanning/clicking) with occasional longer ones (reading)."""
+        if self._dry_run:
+            return
         if random.random() < 0.15:
             # 15% chance of a longer "reading" pause
             time.sleep(random.uniform(max_sleep, max_sleep * 4))
@@ -194,6 +199,10 @@ class Crawler:
         engine = random.choice(engines)
         url = engine.format(quote_plus(query))
 
+        if self._dry_run:
+            logging.info("[dry-run] Would search: %s -> %s", query, url)
+            return
+
         logging.info("Searching: %s", query)
         try:
             body = self._request(url)
@@ -245,6 +254,10 @@ class Crawler:
         self._start_time = datetime.datetime.now()
 
         while True:
+            if self._is_timeout_reached():
+                logging.info("Timeout reached, exiting")
+                return
+
             try:
                 if random.random() < self._search_chance:
                     self._do_search()
@@ -261,7 +274,7 @@ class Crawler:
 
                 # inter-session pause: sometimes a brief gap, sometimes
                 # a longer break like someone stepped away
-                if random.random() < 0.1:
+                if random.random() < 0.1 and not self._dry_run:
                     pause = random.uniform(30, 120)
                     logging.debug("Taking a %.0fs break", pause)
                     time.sleep(pause)
@@ -293,6 +306,12 @@ def main():
         default=None,
         help="runtime limit in seconds",
     )
+    parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        default=False,
+        help="log URLs without making requests",
+    )
     args = parser.parse_args()
 
     logging.basicConfig(level=getattr(logging, args.log.upper()))
@@ -302,6 +321,9 @@ def main():
 
     if args.timeout:
         config["timeout"] = args.timeout
+
+    if args.dry_run:
+        config["dry_run"] = True
 
     crawler = Crawler(config)
     crawler.crawl()
