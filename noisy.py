@@ -4,75 +4,91 @@ import json
 import logging
 import random
 import re
-import sys
 import time
+from urllib.parse import quote_plus, urljoin, urlparse
 
 import requests
-from urllib3.exceptions import LocationParseError
 
-try:                 # Python 2
-    from urllib.parse import urljoin, urlparse
-except ImportError:  # Python 3
-    from urlparse import urljoin, urlparse
+MAX_RESPONSE_BYTES = 1_000_000  # 1MB - skip pages larger than this
+MAX_LINKS = 200  # cap extracted links per page
+MAX_BLACKLIST = 5000  # cap blacklist to bound memory
 
-try:                 # Python 2
-    reload(sys)
-    sys.setdefaultencoding('latin-1')
-except NameError:    # Python 3
-    pass
+_URL_RE = re.compile(
+    r"^https?://"
+    r"(?:(?:[A-Z0-9](?:[A-Z0-9-]{0,61}[A-Z0-9])?\.)+(?:[A-Z]{2,6}\.?|[A-Z0-9-]{2,}\.?)|"
+    r"\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})"
+    r"(?::\d+)?"
+    r"(?:/?|[/?]\S+)$",
+    re.IGNORECASE,
+)
+
+_HREF_RE = re.compile(r"""href=["'](?!#)(.*?)["']""")
+
+_TEMPLATE_RE = re.compile(r"\{(\w+)\}")
 
 
-class Crawler(object):
-    def __init__(self):
-        """
-        Initializes the Crawl class
-        """
-        self._config = {}
-        self._links = []
+def generate_query(search_config):
+    """Build a search query by picking a random template and filling its
+    {placeholder} slots with random words from the configured word lists.
+    When a template uses the same placeholder twice (e.g. "{item} vs {item}"),
+    each occurrence gets an independent random pick."""
+    templates = search_config["templates"]
+    words = search_config["words"]
+
+    template = random.choice(templates)
+
+    def replace_slot(match):
+        key = match.group(1)
+        word_list = words.get(key)
+        if not word_list:
+            return match.group(0)
+        return random.choice(word_list)
+
+    return _TEMPLATE_RE.sub(replace_slot, template)
+
+
+class Crawler:
+    def __init__(self, config):
+        self._config = config
+        self._blacklisted = set(config.get("blacklisted_urls", []))
+        self._session = requests.Session()
         self._start_time = None
+        self._search_chance = config.get("search_chance", 0.3)
+        self._search_config = config.get("search", {})
 
     class CrawlerTimedOut(Exception):
-        """
-        Raised when the specified timeout is exceeded
-        """
         pass
 
     def _request(self, url):
-        """
-        Sends a POST/GET requests using a random user agent
-        :param url: the url to visit
-        :return: the response Requests object
-        """
         random_user_agent = random.choice(self._config["user_agents"])
-        headers = {'user-agent': random_user_agent}
+        self._session.headers["user-agent"] = random_user_agent
 
-        response = requests.get(url, headers=headers, timeout=5)
+        response = self._session.get(url, timeout=10, stream=True)
 
-        return response
+        # check content-length before downloading the body
+        content_length = response.headers.get("content-length")
+        if content_length and int(content_length) > MAX_RESPONSE_BYTES:
+            response.close()
+            return None
+
+        # read up to the limit, then discard
+        body = response.content[:MAX_RESPONSE_BYTES]
+        response.close()
+        return body
 
     @staticmethod
     def _normalize_link(link, root_url):
-        """
-        Normalizes links extracted from the DOM by making them all absolute, so
-        we can request them, for example, turns a "/images" link extracted from https://imgur.com
-        to "https://imgur.com/images"
-        :param link: link found in the DOM
-        :param root_url: the URL the DOM was loaded from
-        :return: absolute link
-        """
         try:
             parsed_url = urlparse(link)
         except ValueError:
-            # urlparse can get confused about urls with the ']'
-            # character and thinks it must be a malformed IPv6 URL
             return None
         parsed_root_url = urlparse(root_url)
 
-        # '//' means keep the current protocol used to access this URL
         if link.startswith("//"):
-            return "{}://{}{}".format(parsed_root_url.scheme, parsed_url.netloc, parsed_url.path)
+            return "{}://{}{}".format(
+                parsed_root_url.scheme, parsed_url.netloc, parsed_url.path
+            )
 
-        # possibly a relative path
         if not parsed_url.scheme:
             return urljoin(root_url, link)
 
@@ -80,195 +96,216 @@ class Crawler(object):
 
     @staticmethod
     def _is_valid_url(url):
-        """
-        Check if a url is a valid url.
-        Used to filter out invalid values that were found in the "href" attribute,
-        for example "javascript:void(0)"
-        taken from https://stackoverflow.com/questions/7160737
-        :param url: url to be checked
-        :return: boolean indicating whether the URL is valid or not
-        """
-        regex = re.compile(
-            r'^(?:http|ftp)s?://'  # http:// or https://
-            r'(?:(?:[A-Z0-9](?:[A-Z0-9-]{0,61}[A-Z0-9])?\.)+(?:[A-Z]{2,6}\.?|[A-Z0-9-]{2,}\.?)|'  # domain...
-            r'\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})'  # ...or ip
-            r'(?::\d+)?'  # optional port
-            r'(?:/?|[/?]\S+)$', re.IGNORECASE)
-        return re.match(regex, url) is not None
+        return _URL_RE.match(url) is not None
 
     def _is_blacklisted(self, url):
-        """
-        Checks is a URL is blacklisted
-        :param url: full URL
-        :return: boolean indicating whether a URL is blacklisted or not
-        """
-        return any(blacklisted_url in url for blacklisted_url in self._config["blacklisted_urls"])
+        return any(bl in url for bl in self._blacklisted)
 
     def _should_accept_url(self, url):
-        """
-        filters url if it is blacklisted or not valid, we put filtering logic here
-        :param url: full url to be checked
-        :return: boolean of whether or not the url should be accepted and potentially visited
-        """
         return url and self._is_valid_url(url) and not self._is_blacklisted(url)
 
     def _extract_urls(self, body, root_url):
-        """
-        gathers links to be visited in the future from a web page's body.
-        does it by finding "href" attributes in the DOM
-        :param body: the HTML body to extract links from
-        :param root_url: the root URL of the given body
-        :return: list of extracted links
-        """
-        pattern = r"href=[\"'](?!#)(.*?)[\"'].*?"  # ignore links starting with #, no point in re-visiting the same page
-        urls = re.findall(pattern, str(body))
+        urls = _HREF_RE.findall(body.decode("utf-8", errors="replace"))
+        normalized = [self._normalize_link(url, root_url) for url in urls]
+        filtered = [u for u in normalized if self._should_accept_url(u)]
+        random.shuffle(filtered)
+        return filtered[:MAX_LINKS]
 
-        normalize_urls = [self._normalize_link(url, root_url) for url in urls]
-        filtered_urls = list(filter(self._should_accept_url, normalize_urls))
-
-        return filtered_urls
-
-    def _remove_and_blacklist(self, link):
-        """
-        Removes a link from our current links list
-        and blacklists it so we don't visit it in the future
-        :param link: link to remove and blacklist
-        """
-        self._config['blacklisted_urls'].append(link)
-        del self._links[self._links.index(link)]
-
-    def _browse_from_links(self, depth=0):
-        """
-        Selects a random link out of the available link list and visits it.
-        Blacklists any link that is not responsive or that contains no other links.
-        Please note that this function is recursive and will keep calling itself until
-        a dead end has reached or when we ran out of links
-        :param depth: our current link depth
-        """
-        is_depth_reached = depth >= self._config['max_depth']
-        if not len(self._links) or is_depth_reached:
-            logging.debug("Hit a dead end, moving to the next root URL")
-            # escape from the recursion, we don't have links to continue or we have reached the max depth
-            return
-
-        if self._is_timeout_reached():
-            raise self.CrawlerTimedOut
-
-        random_link = random.choice(self._links)
-        try:
-            logging.info("Visiting {}".format(random_link))
-            sub_page = self._request(random_link).content
-            sub_links = self._extract_urls(sub_page, random_link)
-
-            # sleep for a random amount of time
-            time.sleep(random.randrange(self._config["min_sleep"], self._config["max_sleep"]))
-
-            # make sure we have more than 1 link to pick from
-            if len(sub_links) > 1:
-                # extract links from the new page
-                self._links = self._extract_urls(sub_page, random_link)
-            else:
-                # else retry with current link list
-                # remove the dead-end link from our list
-                self._remove_and_blacklist(random_link)
-
-        except requests.exceptions.RequestException:
-            logging.debug("Exception on URL: %s, removing from list and trying again!" % random_link)
-            self._remove_and_blacklist(random_link)
-
-        self._browse_from_links(depth + 1)
-
-    def load_config_file(self, file_path):
-        """
-        Loads and decodes a JSON config file, sets the config of the crawler instance
-        to the loaded one
-        :param file_path: path of the config file
-        :return:
-        """
-        with open(file_path, 'r') as config_file:
-            config = json.load(config_file)
-            self.set_config(config)
-
-    def set_config(self, config):
-        """
-        Sets the config of the crawler instance to the provided dict
-        :param config: dict of configuration options, for example:
-        {
-            "root_urls": [],
-            "blacklisted_urls": [],
-            "click_depth": 5
-            ...
-        }
-        """
-        self._config = config
-
-    def set_option(self, option, value):
-        """
-        Sets a specific key in the config dict
-        :param option: the option key in the config, for example: "max_depth"
-        :param value: value for the option
-        """
-        self._config[option] = value
+    def _blacklist(self, url):
+        if len(self._blacklisted) < MAX_BLACKLIST:
+            self._blacklisted.add(url)
 
     def _is_timeout_reached(self):
-        """
-        Determines whether the specified timeout has reached, if no timeout
-        is specified then return false
-        :return: boolean indicating whether the timeout has reached
-        """
-        is_timeout_set = self._config["timeout"] is not False  # False is set when no timeout is desired
-        end_time = self._start_time + datetime.timedelta(seconds=self._config["timeout"])
-        is_timed_out = datetime.datetime.now() >= end_time
+        timeout = self._config.get("timeout")
+        if not timeout:
+            return False
+        end_time = self._start_time + datetime.timedelta(seconds=timeout)
+        return datetime.datetime.now() >= end_time
 
-        return is_timeout_set and is_timed_out
+    @staticmethod
+    def _human_sleep(min_sleep, max_sleep):
+        """Sleep with a distribution that mimics human browsing - mostly short
+        pauses (scanning/clicking) with occasional longer ones (reading)."""
+        if random.random() < 0.15:
+            # 15% chance of a longer "reading" pause
+            time.sleep(random.uniform(max_sleep, max_sleep * 4))
+        else:
+            # quick click-through
+            time.sleep(random.uniform(min_sleep, max_sleep))
+
+    def _browse_from_links(self, links):
+        # vary depth per session - sometimes shallow, sometimes deep
+        max_depth = random.randint(
+            max(1, self._config["max_depth"] // 3),
+            self._config["max_depth"],
+        )
+
+        for depth in range(max_depth):
+            if not links:
+                logging.debug("Dead end at depth %d, returning to root", depth)
+                return
+
+            if self._is_timeout_reached():
+                raise self.CrawlerTimedOut
+
+            # occasionally jump to a completely unrelated root mid-crawl
+            # this mimics opening a new tab / switching context
+            if depth > 0 and random.random() < 0.1:
+                logging.debug("Context switch at depth %d", depth)
+                return
+
+            link = random.choice(links)
+            try:
+                logging.info("Depth %d: %s", depth, link)
+                body = self._request(link)
+                if body is None:
+                    logging.debug("Skipping oversized page: %s", link)
+                    links.remove(link)
+                    self._blacklist(link)
+                    continue
+
+                new_links = self._extract_urls(body, link)
+                del body  # free immediately
+
+                self._human_sleep(
+                    self._config["min_sleep"],
+                    self._config["max_sleep"],
+                )
+
+                if len(new_links) > 1:
+                    links = new_links
+                else:
+                    links.remove(link)
+                    self._blacklist(link)
+
+            except requests.exceptions.RequestException:
+                logging.debug("Request failed: %s", link)
+                links = [u for u in links if u != link]
+                self._blacklist(link)
+
+    def _do_search(self):
+        """Perform a search engine query and follow a few results, mimicking
+        a user searching for something and clicking through."""
+        query = generate_query(self._search_config)
+        engines = self._search_config.get("engines", [])
+        if not engines:
+            return
+
+        engine = random.choice(engines)
+        url = engine.format(quote_plus(query))
+
+        logging.info("Searching: %s", query)
+        try:
+            body = self._request(url)
+            if body is None:
+                return
+
+            links = self._extract_urls(body, url)
+            del body
+
+            self._human_sleep(
+                self._config["min_sleep"],
+                self._config["max_sleep"],
+            )
+
+            # click 1-3 search results, like a real user would
+            clicks = min(random.randint(1, 3), len(links))
+            for result_link in random.sample(links, clicks) if links else []:
+                if self._is_timeout_reached():
+                    raise self.CrawlerTimedOut
+                try:
+                    logging.info("Search result: %s", result_link)
+                    result_body = self._request(result_link)
+                    if result_body is None:
+                        continue
+
+                    # sometimes follow one link deeper from the result
+                    if random.random() < 0.4:
+                        sub_links = self._extract_urls(result_body, result_link)
+                        del result_body
+                        if sub_links:
+                            deeper = random.choice(sub_links)
+                            logging.info("Following deeper: %s", deeper)
+                            self._request(deeper)
+                    else:
+                        del result_body
+
+                    self._human_sleep(
+                        self._config["min_sleep"],
+                        self._config["max_sleep"],
+                    )
+
+                except requests.exceptions.RequestException:
+                    logging.debug("Search result failed: %s", result_link)
+
+        except requests.exceptions.RequestException:
+            logging.debug("Search failed: %s", url)
 
     def crawl(self):
-        """
-        Collects links from our root urls, stores them and then calls
-        `_browse_from_links` to browse them
-        """
         self._start_time = datetime.datetime.now()
 
         while True:
-            url = random.choice(self._config["root_urls"])
             try:
-                body = self._request(url).content
-                self._links = self._extract_urls(body, url)
-                logging.debug("found {} links".format(len(self._links)))
-                self._browse_from_links()
+                if random.random() < self._search_chance:
+                    self._do_search()
+                else:
+                    url = random.choice(self._config["root_urls"])
+                    logging.info("Starting new crawl from %s", url)
+                    body = self._request(url)
+                    if body is None:
+                        continue
+                    links = self._extract_urls(body, url)
+                    del body
+                    logging.debug("Found %d links", len(links))
+                    self._browse_from_links(links)
 
-            except requests.exceptions.RequestException:
-                logging.warn("Error connecting to root url: {}".format(url))
-                
+                # inter-session pause: sometimes a brief gap, sometimes
+                # a longer break like someone stepped away
+                if random.random() < 0.1:
+                    pause = random.uniform(30, 120)
+                    logging.debug("Taking a %.0fs break", pause)
+                    time.sleep(pause)
+
+            except requests.exceptions.RequestException as e:
+                logging.warning("Root error: %s", e)
+
             except MemoryError:
-                logging.warn("Error: content at url: {} is exhausting the memory".format(url))
-
-            except LocationParseError:
-                logging.warn("Error encountered during parsing of: {}".format(url))
+                logging.warning("MemoryError, continuing")
 
             except self.CrawlerTimedOut:
-                logging.info("Timeout has exceeded, exiting")
+                logging.info("Timeout reached, exiting")
                 return
+
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument('--log', metavar='-l', type=str, help='logging level', default='info')
-    parser.add_argument('--config', metavar='-c', required=True, type=str, help='config file')
-    parser.add_argument('--timeout', metavar='-t', required=False, type=int,
-                        help='for how long the crawler should be running, in seconds', default=False)
+    parser.add_argument(
+        "--log", metavar="-l", type=str, default="info", help="logging level"
+    )
+    parser.add_argument(
+        "--config", metavar="-c", required=True, type=str, help="config file"
+    )
+    parser.add_argument(
+        "--timeout",
+        metavar="-t",
+        required=False,
+        type=int,
+        default=None,
+        help="runtime limit in seconds",
+    )
     args = parser.parse_args()
 
-    level = getattr(logging, args.log.upper())
-    logging.basicConfig(level=level)
+    logging.basicConfig(level=getattr(logging, args.log.upper()))
 
-    crawler = Crawler()
-    crawler.load_config_file(args.config)
+    with open(args.config, "r") as f:
+        config = json.load(f)
 
     if args.timeout:
-        crawler.set_option('timeout', args.timeout)
+        config["timeout"] = args.timeout
 
+    crawler = Crawler(config)
     crawler.crawl()
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()
