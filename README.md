@@ -1,5 +1,8 @@
 # Noisy
 
+[![CI](https://github.com/adamkingdotnet/noisy/actions/workflows/ci.yml/badge.svg)](https://github.com/adamkingdotnet/noisy/actions/workflows/ci.yml)
+[![Docker](https://github.com/adamkingdotnet/noisy/actions/workflows/docker.yml/badge.svg)](https://github.com/adamkingdotnet/noisy/actions/workflows/docker.yml)
+
 A Python script that generates random HTTP/DNS traffic noise in the background while you go about your regular web browsing, to make your web traffic data less valuable for selling and for extra obscurity.
 
 > **Fork of [1tayH/noisy](https://github.com/1tayH/noisy)** with memory stability fixes, template-based search query generation, and human-like browsing patterns.
@@ -16,15 +19,17 @@ A Python script that generates random HTTP/DNS traffic noise in the background w
 
 ### Docker (recommended)
 
+Pre-built images are available from GitHub Container Registry:
+
 ```bash
-docker build -t noisy .
-docker run -d --name noisy noisy --config config.json
+docker run -d --name noisy --memory=256m ghcr.io/adamkingdotnet/noisy:latest
 ```
 
-With a memory limit (recommended):
+Or build locally:
 
 ```bash
-docker run -d --name noisy --memory=256m noisy --config config.json
+docker build -t noisy .
+docker run -d --name noisy --memory=256m noisy
 ```
 
 ### Standalone
@@ -38,13 +43,15 @@ python noisy.py --config config.json
 
 ```
 python noisy.py --help
-usage: noisy.py [-h] [--log -l] --config -c [--timeout -t]
+usage: noisy.py [-h] [--log -l] --config -c [--timeout -t] [--dry-run] [--proxy PROXY]
 
 optional arguments:
   -h, --help    show this help message and exit
   --log -l      logging level
   --config -c   config file
   --timeout -t  runtime limit in seconds
+  --dry-run     log URLs without making requests
+  --proxy PROXY proxy URL (e.g., http://host:port or socks5://host:port)
 ```
 
 ## Configuration
