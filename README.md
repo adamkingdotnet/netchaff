@@ -1,111 +1,99 @@
-
 # Noisy
-[![CircleCI](https://circleci.com/gh/1tayH/noisy/tree/master.svg?style=shield)](https://circleci.com/gh/1tayH/noisy/tree/master)
 
-A simple python script that generates random HTTP/DNS traffic noise in the background while you go about your regular web browsing, to make your web traffic data less valuable for selling and for extra obscurity.
+A Python script that generates random HTTP/DNS traffic noise in the background while you go about your regular web browsing, to make your web traffic data less valuable for selling and for extra obscurity.
 
-Tested on MacOS High Sierra, Ubuntu 16.04 and Raspbian Stretch and is compatable with both Python 2.7 and 3.6
+> **Fork of [1tayH/noisy](https://github.com/1tayH/noisy)** with memory stability fixes, template-based search query generation, and human-like browsing patterns.
+
+## What's different from upstream
+
+- **Memory stable** -- Recursive crawling replaced with iterative loop. Responses are size-capped and closed. Blacklist is bounded. No more OOM kills.
+- **Search engine queries** -- 30% of activity is search queries on Google/Bing/DuckDuckGo, generated from ~11,000 unique combinations via templates and word lists across 15+ interest categories (cooking, health, finance, travel, pets, DIY, etc.).
+- **Human-like patterns** -- Variable crawl depth, mid-session context switching, reading pauses, and inter-session breaks make traffic harder to fingerprint as automated.
+- **Config-driven** -- Search templates, word lists, engines, and all crawl parameters live in `config.json`. Expand coverage by adding words or templates, no code changes needed.
+- **Modernized** -- Python 3.14, pinned dependencies, pre-compiled regexes, connection reuse via `requests.Session`, no Python 2 compat.
 
 ## Getting Started
 
-These instructions will get you a copy of the project up and running on your local machine
+### Docker (recommended)
 
-### Dependencies
-
-Install `requests` if you do not have it already installed, using `pip`:
-
+```bash
+docker build -t noisy .
+docker run -d --name noisy noisy --config config.json
 ```
+
+With a memory limit (recommended):
+
+```bash
+docker run -d --name noisy --memory=256m noisy --config config.json
+```
+
+### Standalone
+
+```bash
 pip install requests
-```
-
-### Usage
-
-Clone the repository
-```
-git clone https://github.com/1tayH/noisy.git
-```
-
-Navigate into the `noisy` directory
-```
-cd noisy
-```
-
-Run the script
-
-```
 python noisy.py --config config.json
 ```
 
-The program can accept a number of command line arguments:
+### Command line options
+
 ```
-$ python noisy.py --help
+python noisy.py --help
 usage: noisy.py [-h] [--log -l] --config -c [--timeout -t]
 
 optional arguments:
   -h, --help    show this help message and exit
   --log -l      logging level
   --config -c   config file
-  --timeout -t  for how long the crawler should be running, in seconds
-```
-only the config file argument is required.
-
-###  Output
-```
-$ docker run -it noisy --config config.json --log debug
-DEBUG:urllib3.connectionpool:Starting new HTTP connection (1): 4chan.org:80
-DEBUG:urllib3.connectionpool:http://4chan.org:80 "GET / HTTP/1.1" 301 None
-DEBUG:urllib3.connectionpool:Starting new HTTP connection (1): www.4chan.org:80
-DEBUG:urllib3.connectionpool:http://www.4chan.org:80 "GET / HTTP/1.1" 200 None
-DEBUG:root:found 92 links
-INFO:root:Visiting http://boards.4chan.org/s4s/
-DEBUG:urllib3.connectionpool:Starting new HTTP connection (1): boards.4chan.org:80
-DEBUG:urllib3.connectionpool:http://boards.4chan.org:80 "GET /s4s/ HTTP/1.1" 200 None
-INFO:root:Visiting http://boards.4chan.org/s4s/thread/6850193#p6850345
-DEBUG:urllib3.connectionpool:Starting new HTTP connection (1): boards.4chan.org:80
-DEBUG:urllib3.connectionpool:http://boards.4chan.org:80 "GET /s4s/thread/6850193 HTTP/1.1" 200 None
-INFO:root:Visiting http://boards.4chan.org/o/
-DEBUG:urllib3.connectionpool:Starting new HTTP connection (1): boards.4chan.org:80
-DEBUG:urllib3.connectionpool:http://boards.4chan.org:80 "GET /o/ HTTP/1.1" 200 None
-DEBUG:root:Hit a dead end, moving to the next root URL
-DEBUG:urllib3.connectionpool:Starting new HTTPS connection (1): www.reddit.com:443
-DEBUG:urllib3.connectionpool:https://www.reddit.com:443 "GET / HTTP/1.1" 200 None
-DEBUG:root:found 237 links
-INFO:root:Visiting https://www.reddit.com/user/Saditon
-DEBUG:urllib3.connectionpool:Starting new HTTPS connection (1): www.reddit.com:443
-DEBUG:urllib3.connectionpool:https://www.reddit.com:443 "GET /user/Saditon HTTP/1.1" 200 None
-...
+  --timeout -t  runtime limit in seconds
 ```
 
-## Build Using Docker
+## Configuration
 
-1. Build the image
+All behavior is controlled via `config.json`:
 
-`docker build -t noisy .`
+| Key | Description | Default |
+|---|---|---|
+| `max_depth` | Maximum link depth per crawl session | `15` |
+| `min_sleep` / `max_sleep` | Base sleep range between requests (seconds) | `1` / `5` |
+| `timeout` | Stop after N seconds, or `false` to run forever | `false` |
+| `search_chance` | Probability of doing a search vs. a site crawl | `0.3` |
+| `root_urls` | List of sites to start crawls from | -- |
+| `blacklisted_urls` | URL substrings to never visit | -- |
+| `user_agents` | User-Agent strings to rotate through | -- |
+| `search.engines` | Search engine URL templates | Google, Bing, DDG |
+| `search.templates` | Query templates with `{placeholder}` slots | 68 templates |
+| `search.words` | Word lists keyed by placeholder name | 15 categories, 493 words |
 
-**Or** if you'd like to build it for a **Raspberry Pi** (running Raspbian stretch):
+### Adding search queries
 
-`docker build -f Dockerfile.pi -t noisy .`
+Add templates to `search.templates` using `{placeholder}` syntax, and populate the word lists in `search.words`. Each `{placeholder}` is independently filled from its word list at runtime:
 
-2. Create the container and run:
+```json
+{
+  "search": {
+    "templates": [
+      "best {item} for {use_case}",
+      "how to {action}",
+      "{food} recipe"
+    ],
+    "words": {
+      "item": ["mattress", "headphones", "laptop"],
+      "use_case": ["beginners", "travel", "home office"],
+      "action": ["patch drywall", "change oil"],
+      "food": ["lasagna", "pad thai"]
+    }
+  }
+}
+```
 
-`docker run -it noisy --config config.json`
-
-## Some examples
-
-Some edge-cases examples are available on the `examples` folder. You can read more there [examples/README.md](examples/README.md).
+This generates queries like "best mattress for travel", "how to change oil", "pad thai recipe", etc.
 
 ## Authors
 
-* **Itay Hury** - *Initial work* - [1tayH](https://github.com/1tayH)
+* **Itay Hury** -- *Original project* -- [1tayH](https://github.com/1tayH)
 
-See also the list of [contributors](https://github.com/1tayH/Noisy/contributors) who participated in this project.
+See the upstream [contributors](https://github.com/1tayH/noisy/contributors).
 
 ## License
 
-This project is licensed under the GNU GPLv3 License - see the [LICENSE.md](LICENSE.md) file for details
-
-## Acknowledgments
-
-This project has been inspired by
-* [RandomNoise](http://www.randomnoise.us)
-* [web-traffic-generator](https://github.com/ecapuano/web-traffic-generator)
+This project is licensed under the GNU GPLv3 License -- see the [LICENSE](LICENSE) file for details.
