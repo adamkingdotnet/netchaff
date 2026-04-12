@@ -2,7 +2,7 @@ import json
 import pathlib
 from unittest.mock import patch
 
-from noisy import Crawler, generate_query, _TEMPLATE_RE
+from netchaff import Crawler, generate_query, _TEMPLATE_RE
 
 _REPO_ROOT = pathlib.Path(__file__).parent.parent
 

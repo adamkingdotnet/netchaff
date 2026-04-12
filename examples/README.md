@@ -6,24 +6,24 @@
 ```
 $ cd examples/docker-compose
 $ docker-compose build
-$ docker-compose up --scale noisy=<number-of-containers>
+$ docker-compose up --scale netchaff=<number-of-containers>
 ```
 
-## Set noisy to run automatically via systemd
+## Set netchaff to run automatically via systemd
 
-You can use systemd to start noisy.py automatically on every boot. The provided
-example service assumes that you have the script copied to /opt/noisy and that
-noisy.py and config.json are readable by the 'noisy' user. You can change these
+You can use systemd to start netchaff automatically on every boot. The provided
+example service assumes that you have the script copied to /opt/netchaff and that
+netchaff.py and config.json are readable by the 'netchaff' user. You can change these
 values to suit your needs.
 
 To configure the service:
 ```
-$ sudo cp examples/systemd/noisy.service /etc/systemd/system
+$ sudo cp examples/systemd/netchaff.service /etc/systemd/system
 $ sudo systemctl daemon-reload
-$ sudo systemctl enable noisy && sudo systemctl start noisy
+$ sudo systemctl enable netchaff && sudo systemctl start netchaff
 ```
 
 You can view the script's output by running:
 ```
-$ journalctl -f -n noisy
+$ journalctl -f -u netchaff
 ```

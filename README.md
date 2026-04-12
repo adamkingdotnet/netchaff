@@ -1,21 +1,20 @@
-# Noisy
+# netchaff
 
-[![CI](https://github.com/adamkingdotnet/noisy/actions/workflows/ci.yml/badge.svg)](https://github.com/adamkingdotnet/noisy/actions/workflows/ci.yml)
-[![Docker](https://github.com/adamkingdotnet/noisy/actions/workflows/docker.yml/badge.svg)](https://github.com/adamkingdotnet/noisy/actions/workflows/docker.yml)
+[![CI](https://github.com/adamkingdotnet/netchaff/actions/workflows/ci.yml/badge.svg)](https://github.com/adamkingdotnet/netchaff/actions/workflows/ci.yml)
+[![Docker](https://github.com/adamkingdotnet/netchaff/actions/workflows/docker.yml/badge.svg)](https://github.com/adamkingdotnet/netchaff/actions/workflows/docker.yml)
 
-A Python script that generates random HTTP/DNS traffic noise in the background while you go about your regular web browsing, to make your web traffic data less valuable for selling and for extra obscurity.
+A network traffic noise generator that creates realistic HTTP browsing activity in the background, making your real web traffic harder to profile and less valuable for data collection.
 
-> **Fork of [1tayH/noisy](https://github.com/1tayH/noisy)** with memory stability fixes, template-based search query generation, and human-like browsing patterns.
+Like [chaff](<https://en.wikipedia.org/wiki/Chaff_(countermeasure)>) deployed to confuse radar, netchaff fills your traffic profile with plausible decoy activity -- search queries, site browsing, and ad tracker interactions -- so the signal of your real browsing gets lost in the noise.
 
-## What's different from upstream
+## Features
 
-- **Memory stable** -- Recursive crawling replaced with iterative loop. Responses are size-capped and closed. Blacklist is bounded. No more OOM kills.
-- **Search engine queries** -- 30% of activity is search queries on Google/Bing/DuckDuckGo, generated from ~11,000 unique combinations via templates and word lists across 15+ interest categories (cooking, health, finance, travel, pets, DIY, etc.).
+- **Search engine queries** -- Generates realistic searches on Google/Bing/DuckDuckGo from ~11,000 unique combinations via templates and word lists across 15+ interest categories (cooking, health, finance, travel, pets, DIY, etc.)
 - **Anti-fingerprinting** -- All behavioral parameters (search frequency, crawl depth, sleep times, pause patterns) are randomized per session from configurable ranges. No two sessions look the same.
 - **Tracker cookie harvesting** -- Detects ad network pixels, analytics scripts, and tracking iframes embedded in visited pages and requests them, accumulating real cross-site tracking cookies to pollute tracker databases.
 - **Human-like patterns** -- Variable crawl depth, mid-session context switching, reading pauses, and inter-session breaks make traffic harder to fingerprint as automated.
+- **Memory stable** -- Iterative crawling with size-capped responses and bounded data structures. No OOM kills, safe for long-running containers.
 - **Config-driven** -- Search templates, word lists, engines, and all crawl parameters live in `config.json`. Expand coverage by adding words or templates, no code changes needed.
-- **Modernized** -- Python 3.14, pinned dependencies, pre-compiled regexes, connection reuse via `requests.Session`, no Python 2 compat.
 
 ## Getting Started
 
@@ -24,28 +23,28 @@ A Python script that generates random HTTP/DNS traffic noise in the background w
 Pre-built images are available from GitHub Container Registry:
 
 ```bash
-docker run -d --name noisy --memory=256m ghcr.io/adamkingdotnet/noisy:latest
+docker run -d --name netchaff --memory=256m ghcr.io/adamkingdotnet/netchaff:latest
 ```
 
 Or build locally:
 
 ```bash
-docker build -t noisy .
-docker run -d --name noisy --memory=256m noisy
+docker build -t netchaff .
+docker run -d --name netchaff --memory=256m netchaff
 ```
 
 ### Standalone
 
 ```bash
 pip install requests
-python noisy.py --config config.json
+python netchaff.py --config config.json
 ```
 
 ### Command line options
 
 ```
-python noisy.py --help
-usage: noisy.py [-h] [--log -l] --config -c [--timeout -t] [--dry-run] [--proxy PROXY]
+python netchaff.py --help
+usage: netchaff.py [-h] [--log -l] --config -c [--timeout -t] [--dry-run] [--proxy PROXY]
 
 optional arguments:
   -h, --help    show this help message and exit
@@ -119,10 +118,10 @@ Route all traffic through an HTTP or SOCKS proxy:
 
 ```bash
 # HTTP proxy
-python noisy.py --config config.json --proxy http://127.0.0.1:8080
+python netchaff.py --config config.json --proxy http://127.0.0.1:8080
 
 # SOCKS5 proxy (requires: pip install requests[socks])
-python noisy.py --config config.json --proxy socks5://127.0.0.1:1080
+python netchaff.py --config config.json --proxy socks5://127.0.0.1:1080
 ```
 
 Or set it in `config.json`:
@@ -135,7 +134,7 @@ Or set it in `config.json`:
 
 ### Tracker cookie harvesting
 
-Noisy automatically detects tracking pixels, analytics scripts, and ad network resources embedded in visited pages and makes requests to them. This accumulates real cross-site tracking cookies in the session, polluting tracker databases with noisy's randomized browsing data.
+netchaff automatically detects tracking pixels, analytics scripts, and ad network resources embedded in visited pages and makes requests to them. This accumulates real cross-site tracking cookies in the session, polluting tracker databases with randomized browsing data.
 
 Configure which domains to harvest via `tracker_domains` in `config.json`. Set to an empty list to disable:
 
@@ -145,11 +144,9 @@ Configure which domains to harvest via `tracker_domains` in `config.json`. Set t
 }
 ```
 
-## Authors
+## Attribution
 
-* **Itay Hury** -- *Original project* -- [1tayH](https://github.com/1tayH)
-
-See the upstream [contributors](https://github.com/1tayH/noisy/contributors).
+Originally based on [1tayH/noisy](https://github.com/1tayH/noisy) by **Itay Hury** and its [contributors](https://github.com/1tayH/noisy/contributors). The core concept of generating background HTTP noise to obscure real browsing came from that project. netchaff has since been substantially rewritten and extended using [Claude Code](https://claude.ai/code).
 
 ## License
 

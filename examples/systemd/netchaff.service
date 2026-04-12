@@ -1,0 +1,10 @@
+[Unit]
+Description=Network traffic noise generator for privacy
+
+[Service]
+User=netchaff
+WorkingDirectory=/opt/netchaff
+ExecStart=/usr/bin/python /opt/netchaff/netchaff.py --config /opt/netchaff/config.json
+
+[Install]
+WantedBy=multi-user.target

@@ -24,4 +24,4 @@ jobs:
         run: python -m pytest tests/ -v
 
       - name: Smoke test (15s live run)
-        run: python noisy.py --config config.json --timeout 15 --log warning
+        run: python netchaff.py --config config.json --timeout 15 --log warning
