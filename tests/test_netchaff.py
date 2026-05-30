@@ -1,8 +1,8 @@
 import json
 import pathlib
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
-from netchaff import Crawler, generate_query, _TEMPLATE_RE
+from netchaff import Crawler, generate_query, MAX_RESPONSE_BYTES, _TEMPLATE_RE
 
 _REPO_ROOT = pathlib.Path(__file__).parent.parent
 
@@ -52,6 +52,12 @@ class TestCrawler:
         # should not raise, returns something
         assert result is not None
 
+    def test_normalize_link_protocol_relative_preserves_query(self):
+        result = Crawler._normalize_link(
+            "//cdn.example.com/i.js?v=2#frag", "https://example.com/page"
+        )
+        assert result == "https://cdn.example.com/i.js?v=2#frag"
+
     def test_is_valid_url(self):
         assert Crawler._is_valid_url("https://example.com")
         assert Crawler._is_valid_url("http://example.com/path?q=1")
@@ -66,6 +72,21 @@ class TestCrawler:
             crawler._blacklist(f"https://example.com/{i}")
         assert len(crawler._blacklisted) <= 5000
 
+    def test_is_blacklisted_pattern_substring(self):
+        config = _load_config()
+        crawler = Crawler(config)
+        # config patterns (e.g. ".png") still match as substrings
+        assert crawler._is_blacklisted("https://example.com/logo.png")
+        assert not crawler._is_blacklisted("https://example.com/article")
+
+    def test_is_blacklisted_runtime_is_exact(self):
+        config = _load_config()
+        crawler = Crawler(config)
+        crawler._blacklist("https://example.com/dead")
+        assert crawler._is_blacklisted("https://example.com/dead")
+        # runtime entries match exactly, not as substrings of other URLs
+        assert not crawler._is_blacklisted("https://example.com/dead2")
+
     def test_extract_urls_capped(self):
         config = _load_config()
         crawler = Crawler(config)
@@ -74,6 +95,32 @@ class TestCrawler:
         body = f"<html><body>{links}</body></html>".encode()
         urls = crawler._extract_urls(body, "https://example.com")
         assert len(urls) <= 200
+
+
+class TestRequestCap:
+    def test_request_caps_body_without_content_length(self):
+        # A response with no content-length header must still be capped at
+        # MAX_RESPONSE_BYTES rather than buffered in full.
+        config = _load_config()
+        crawler = Crawler(config)
+        oversized = b"x" * (MAX_RESPONSE_BYTES + 50_000)
+        response = MagicMock()
+        response.headers = {}  # no content-length
+        response.iter_content = lambda chunk_size=8192: (
+            oversized[i:i + chunk_size]
+            for i in range(0, len(oversized), chunk_size)
+        )
+        with patch.object(crawler._session, "get", return_value=response):
+            body = crawler._request("https://example.com")
+        assert len(body) == MAX_RESPONSE_BYTES
+
+    def test_request_skips_oversized_content_length(self):
+        config = _load_config()
+        crawler = Crawler(config)
+        response = MagicMock()
+        response.headers = {"content-length": str(MAX_RESPONSE_BYTES + 1)}
+        with patch.object(crawler._session, "get", return_value=response):
+            assert crawler._request("https://example.com") is None
 
 
 class TestDryRun:

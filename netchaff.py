@@ -57,7 +57,8 @@ def generate_query(search_config):
 class Crawler:
     def __init__(self, config):
         self._config = config
-        self._blacklisted = set(config.get("blacklisted_urls", []))
+        self._blacklist_patterns = tuple(config.get("blacklisted_urls", []))
+        self._blacklisted = set()
         self._session = requests.Session()
         self._start_time = None
         self._search_config = config.get("search", {})
@@ -105,10 +106,19 @@ class Crawler:
             response.close()
             return None
 
-        # read up to the limit, then discard
-        body = response.content[:MAX_RESPONSE_BYTES]
+        # stream the body, stopping once we reach the cap. Reading
+        # response.content would buffer the whole body first, so a missing
+        # or dishonest content-length header could force an unbounded read
+        # into memory before the slice.
+        chunks = []
+        total = 0
+        for chunk in response.iter_content(chunk_size=8192):
+            chunks.append(chunk)
+            total += len(chunk)
+            if total >= MAX_RESPONSE_BYTES:
+                break
         response.close()
-        return body
+        return b"".join(chunks)[:MAX_RESPONSE_BYTES]
 
     @staticmethod
     def _normalize_link(link, root_url):
@@ -116,13 +126,10 @@ class Crawler:
             parsed_url = urlparse(link)
         except ValueError:
             return None
-        parsed_root_url = urlparse(root_url)
 
-        if link.startswith("//"):
-            return "{}://{}{}".format(
-                parsed_root_url.scheme, parsed_url.netloc, parsed_url.path
-            )
-
+        # urljoin resolves protocol-relative (//host/path?q#frag) and
+        # relative links against the root, preserving query and fragment.
+        # Absolute links (with their own scheme) pass through unchanged.
         if not parsed_url.scheme:
             return urljoin(root_url, link)
 
@@ -133,7 +140,12 @@ class Crawler:
         return _URL_RE.match(url) is not None
 
     def _is_blacklisted(self, url):
-        return any(bl in url for bl in self._blacklisted)
+        # Exact-match the runtime set first (O(1); this is the set that grows
+        # up to MAX_BLACKLIST), then substring-match the small fixed pattern
+        # list from config (extensions, path fragments, domains).
+        if url in self._blacklisted:
+            return True
+        return any(pattern in url for pattern in self._blacklist_patterns)
 
     def _should_accept_url(self, url):
         return url and self._is_valid_url(url) and not self._is_blacklisted(url)
@@ -381,7 +393,7 @@ def main():
     with open(args.config, "r") as f:
         config = json.load(f)
 
-    if args.timeout:
+    if args.timeout is not None:
         config["timeout"] = args.timeout
 
     if args.dry_run:
