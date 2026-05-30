@@ -7,6 +7,25 @@ on:
     branches: [master]
 
 jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.14"
+          allow-prereleases: true
+
+      - name: Install dev dependencies
+        run: pip install -r requirements-dev.txt
+
+      - name: Lint (ruff)
+        run: ruff check netchaff.py tests/
+
+      - name: Type-check (mypy)
+        run: mypy netchaff.py
+
   test:
     runs-on: ubuntu-latest
     steps:
