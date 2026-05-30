@@ -105,10 +105,19 @@ class Crawler:
             response.close()
             return None
 
-        # read up to the limit, then discard
-        body = response.content[:MAX_RESPONSE_BYTES]
+        # stream the body, stopping once we reach the cap. Reading
+        # response.content would buffer the whole body first, so a missing
+        # or dishonest content-length header could force an unbounded read
+        # into memory before the slice.
+        chunks = []
+        total = 0
+        for chunk in response.iter_content(chunk_size=8192):
+            chunks.append(chunk)
+            total += len(chunk)
+            if total >= MAX_RESPONSE_BYTES:
+                break
         response.close()
-        return body
+        return b"".join(chunks)[:MAX_RESPONSE_BYTES]
 
     @staticmethod
     def _normalize_link(link, root_url):

@@ -1,8 +1,8 @@
 import json
 import pathlib
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
-from netchaff import Crawler, generate_query, _TEMPLATE_RE
+from netchaff import Crawler, generate_query, MAX_RESPONSE_BYTES, _TEMPLATE_RE
 
 _REPO_ROOT = pathlib.Path(__file__).parent.parent
 
@@ -74,6 +74,32 @@ class TestCrawler:
         body = f"<html><body>{links}</body></html>".encode()
         urls = crawler._extract_urls(body, "https://example.com")
         assert len(urls) <= 200
+
+
+class TestRequestCap:
+    def test_request_caps_body_without_content_length(self):
+        # A response with no content-length header must still be capped at
+        # MAX_RESPONSE_BYTES rather than buffered in full.
+        config = _load_config()
+        crawler = Crawler(config)
+        oversized = b"x" * (MAX_RESPONSE_BYTES + 50_000)
+        response = MagicMock()
+        response.headers = {}  # no content-length
+        response.iter_content = lambda chunk_size=8192: (
+            oversized[i:i + chunk_size]
+            for i in range(0, len(oversized), chunk_size)
+        )
+        with patch.object(crawler._session, "get", return_value=response):
+            body = crawler._request("https://example.com")
+        assert len(body) == MAX_RESPONSE_BYTES
+
+    def test_request_skips_oversized_content_length(self):
+        config = _load_config()
+        crawler = Crawler(config)
+        response = MagicMock()
+        response.headers = {"content-length": str(MAX_RESPONSE_BYTES + 1)}
+        with patch.object(crawler._session, "get", return_value=response):
+            assert crawler._request("https://example.com") is None
 
 
 class TestDryRun:
