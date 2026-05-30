@@ -52,6 +52,12 @@ class TestCrawler:
         # should not raise, returns something
         assert result is not None
 
+    def test_normalize_link_protocol_relative_preserves_query(self):
+        result = Crawler._normalize_link(
+            "//cdn.example.com/i.js?v=2#frag", "https://example.com/page"
+        )
+        assert result == "https://cdn.example.com/i.js?v=2#frag"
+
     def test_is_valid_url(self):
         assert Crawler._is_valid_url("https://example.com")
         assert Crawler._is_valid_url("http://example.com/path?q=1")

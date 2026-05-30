@@ -126,13 +126,10 @@ class Crawler:
             parsed_url = urlparse(link)
         except ValueError:
             return None
-        parsed_root_url = urlparse(root_url)
 
-        if link.startswith("//"):
-            return "{}://{}{}".format(
-                parsed_root_url.scheme, parsed_url.netloc, parsed_url.path
-            )
-
+        # urljoin resolves protocol-relative (//host/path?q#frag) and
+        # relative links against the root, preserving query and fragment.
+        # Absolute links (with their own scheme) pass through unchanged.
         if not parsed_url.scheme:
             return urljoin(root_url, link)
 
