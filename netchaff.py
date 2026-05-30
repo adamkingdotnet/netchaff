@@ -57,7 +57,8 @@ def generate_query(search_config):
 class Crawler:
     def __init__(self, config):
         self._config = config
-        self._blacklisted = set(config.get("blacklisted_urls", []))
+        self._blacklist_patterns = tuple(config.get("blacklisted_urls", []))
+        self._blacklisted = set()
         self._session = requests.Session()
         self._start_time = None
         self._search_config = config.get("search", {})
@@ -142,7 +143,12 @@ class Crawler:
         return _URL_RE.match(url) is not None
 
     def _is_blacklisted(self, url):
-        return any(bl in url for bl in self._blacklisted)
+        # Exact-match the runtime set first (O(1); this is the set that grows
+        # up to MAX_BLACKLIST), then substring-match the small fixed pattern
+        # list from config (extensions, path fragments, domains).
+        if url in self._blacklisted:
+            return True
+        return any(pattern in url for pattern in self._blacklist_patterns)
 
     def _should_accept_url(self, url):
         return url and self._is_valid_url(url) and not self._is_blacklisted(url)

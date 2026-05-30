@@ -66,6 +66,21 @@ class TestCrawler:
             crawler._blacklist(f"https://example.com/{i}")
         assert len(crawler._blacklisted) <= 5000
 
+    def test_is_blacklisted_pattern_substring(self):
+        config = _load_config()
+        crawler = Crawler(config)
+        # config patterns (e.g. ".png") still match as substrings
+        assert crawler._is_blacklisted("https://example.com/logo.png")
+        assert not crawler._is_blacklisted("https://example.com/article")
+
+    def test_is_blacklisted_runtime_is_exact(self):
+        config = _load_config()
+        crawler = Crawler(config)
+        crawler._blacklist("https://example.com/dead")
+        assert crawler._is_blacklisted("https://example.com/dead")
+        # runtime entries match exactly, not as substrings of other URLs
+        assert not crawler._is_blacklisted("https://example.com/dead2")
+
     def test_extract_urls_capped(self):
         config = _load_config()
         crawler = Crawler(config)
