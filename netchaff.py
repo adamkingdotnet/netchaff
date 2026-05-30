@@ -393,7 +393,7 @@ def main():
     with open(args.config, "r") as f:
         config = json.load(f)
 
-    if args.timeout:
+    if args.timeout is not None:
         config["timeout"] = args.timeout
 
     if args.dry_run:
