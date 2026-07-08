@@ -7,40 +7,12 @@ on:
     branches: [main]
 
 jobs:
-  lint:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v5
-
-      - uses: actions/setup-python@v6
-        with:
-          python-version: "3.14"
-          allow-prereleases: true
-
-      - name: Install dev dependencies
-        run: pip install -r requirements-dev.txt
-
-      - name: Lint (ruff)
-        run: ruff check netchaff.py tests/
-
-      - name: Type-check (mypy)
-        run: mypy netchaff.py
-
-  test:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v5
-
-      - uses: actions/setup-python@v6
-        with:
-          python-version: "3.14"
-          allow-prereleases: true
-
-      - name: Install dependencies
-        run: pip install requests pytest
-
-      - name: Run tests
-        run: python -m pytest tests/ -v
-
-      - name: Smoke test (15s live run)
-        run: python netchaff.py --config config.json --timeout 15 --log warning
+  check:
+    uses: adamkingdotnet/.github/.github/workflows/python-check.yml@main
+    with:
+      installer: pip
+      install-command: pip install -r requirements-dev.txt requests pytest
+      lint-command: ruff check netchaff.py tests/
+      typecheck-command: mypy netchaff.py
+      test-command: python -m pytest tests/ -v
+      smoke-command: python netchaff.py --config config.json --timeout 15 --log warning
