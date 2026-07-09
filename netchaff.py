@@ -390,7 +390,7 @@ def main():
 
     logging.basicConfig(level=getattr(logging, args.log.upper()))
 
-    with open(args.config, "r") as f:
+    with open(args.config) as f:
         config = json.load(f)
 
     if args.timeout is not None:
