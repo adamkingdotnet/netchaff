@@ -44,10 +44,11 @@ python netchaff.py --config config.json
 
 ```
 python netchaff.py --help
-usage: netchaff.py [-h] [--log -l] --config -c [--timeout -t] [--dry-run] [--proxy PROXY]
+usage: netchaff.py [-h] [--version] [--log -l] --config -c [--timeout -t] [--dry-run] [--proxy PROXY]
 
 optional arguments:
   -h, --help    show this help message and exit
+  --version     show program's version number and exit
   --log -l      logging level
   --config -c   config file
   --timeout -t  runtime limit in seconds

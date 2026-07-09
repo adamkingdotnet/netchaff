@@ -1,0 +1,9 @@
+name: agents
+# Assert this repo's AGENTS.md working-agreement block matches the config canonical.
+on:
+  push:
+    branches: [main]
+  pull_request:
+jobs:
+  agreement:
+    uses: adamkingdotnet/.github/.github/workflows/agents-check.yml@main
