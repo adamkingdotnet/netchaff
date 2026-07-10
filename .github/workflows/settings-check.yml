@@ -1,0 +1,12 @@
+name: settings-check
+on:
+  pull_request:
+    paths: ['.claude/settings.json']
+  push:
+    branches: [main]
+    paths: ['.claude/settings.json']
+jobs:
+  settings:
+    uses: adamkingdotnet/.github/.github/workflows/settings-check.yml@main
+    with:
+      type: python

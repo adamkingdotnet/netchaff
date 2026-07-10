@@ -9,3 +9,7 @@ venv/
 *.egg-info/
 dist/
 build/
+
+# shared agent layer — committed harness config (global ~/.gitignore ignores .claude/*)
+!.claude/settings.json
+!.claude/king.json
