@@ -46,3 +46,7 @@ python netchaff.py --config config.json --timeout 15 --log warning   # 15s smoke
 - **CI-green** and **verify-latest**: load-bearing — CI must pass and the ghcr image auto-ships on merge to main.
 - **ssh** and **wrangler/Cloudflare**: N/A — no server, no Workers.
 - CI lives in `.github/workflows/` (`ci.yml`, `docker.yml`). No CLAUDE.md; this file is canonical.
+
+## Shared agent layer
+
+This repo consumes the **`king-agents`** plugin from `adamkingdotnet/config` (auto-enabled via the `extraKnownMarketplaces` + `enabledPlugins` block in the committed `.claude/settings.json`). It provides a **verify-before-done** `Stop` hook that runs this repo's gate — declared in `.claude/king.json` as `ruff check netchaff.py tests/ && mypy netchaff.py && python -m pytest tests/ -v` — and blocks turn-end until it passes (the same "verify before done" rule under **Applies here**, now enforced, not just advised). Permissions live in the committed `.claude/settings.json`, byte-gated to the `python` template — don't hand-edit it; changes belong in the config template, and `settings-check.yml` fails the PR on any drift. Only machine-local grants go in `.claude/settings.local.json` (gitignored). Run `/king:doctor` for a health check (plugin version, gate, agreement/settings drift).

@@ -1,0 +1,5 @@
+{
+  "verify": {
+    "cmd": "ruff check netchaff.py tests/ && mypy netchaff.py && python -m pytest tests/ -v"
+  }
+}
