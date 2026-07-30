@@ -4,9 +4,43 @@ Network infrastructure and server management — chaff scripts, monitoring confi
 
 ## Structure
 
-- **`scripts/`** — Network management and chaff scripts.
-- **`configs/`** — Configuration files for network services.
-- **`tests/`** — Test scripts for network validation.
+- **`netchaff.py`** — Main source file (single-file project, ~410 lines).
+- **`config.json`** — Runtime configuration (targets, intervals, chaff types).
+- **`tests/`** — Test suite (`test_netchaff.py`).
+- **`examples/`** — Usage examples: `docker-compose/`, `systemd/`.
+- **`Dockerfile`** — Container build config.
+- **`ruff.toml`** — Linting config. **`mypy.ini`** — Type checking config.
+
+## Commands
+
+| Action | Command |
+|--------|---------|
+| run | `python3 netchaff.py` |
+| lint | `ruff check .` |
+| typecheck | `mypy netchaff.py` |
+| test | `pytest tests/` |
+
+## Key Files
+
+- `netchaff.py` — Main source file. All logic lives here.
+- `config.json` — Behavior controlled here, not hardcoded.
+- `tests/test_netchaff.py` — Test suite.
+- `examples/` — Usage examples: `docker-compose/`, `systemd/`.
+- `ruff.toml` — Linting config. `mypy.ini` — Type checking config.
+
+## Skip These
+
+- `__pycache__/` — Python cache.
+- `*.pyc` — Compiled Python.
+- `.venv/` — Python venv (if present).
+- `requirements*.txt` — Dependency lists (read only if changing dependencies).
+
+## Patterns
+
+### Code style
+- Single-file architecture: all logic in `netchaff.py`.
+- Type hints required (mypy strict).
+- Config-driven: behavior controlled by `config.json`, not hardcoded values.
 
 ## Notes
 
