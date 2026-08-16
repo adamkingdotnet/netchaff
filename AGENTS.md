@@ -15,7 +15,7 @@ Network infrastructure and server management — chaff scripts, monitoring confi
 
 | Action | Command |
 |--------|---------|
-| run | `python3 netchaff.py` |
+| run | `python3 netchaff.py --config config.json` (`--config` is required) |
 | lint | `ruff check .` |
 | typecheck | `mypy netchaff.py` |
 | test | `pytest tests/` |
@@ -43,5 +43,9 @@ Network infrastructure and server management — chaff scripts, monitoring confi
 - Config-driven: behavior controlled by `config.json`, not hardcoded values.
 
 ## Notes
+
+- Refresh the `user_agents` pool in `config.json` ~quarterly — stale UAs are
+  themselves a strong bot fingerprint (last refreshed 2026-08, Chrome 149–151 /
+  Firefox 152–153 / Safari 26.5 era).
 
 <!-- Quick-add scratchpad below -->

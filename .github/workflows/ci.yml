@@ -8,7 +8,7 @@ on:
 
 jobs:
   check:
-    uses: adamkingdotnet/.github/.github/workflows/python-check.yml@main
+    uses: adamkingdotnet/.github/.github/workflows/python-check.yml@ed14dbf099aa00cee37af1bb7f8cd6d4deb78a36 # main
     with:
       installer: pip
       install-command: pip install -r requirements-dev.txt requests pytest
